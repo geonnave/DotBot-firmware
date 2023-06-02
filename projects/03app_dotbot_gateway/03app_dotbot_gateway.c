@@ -20,6 +20,12 @@
 #include "radio.h"
 #include "uart.h"
 
+// # AIO DotBot hackaton, June 2, 2023
+extern int add(int a, int b);
+extern int edhoc_add(int a, int b);
+extern void p256_generate_key_pair_from_c(uint8_t* out_private_key, uint8_t* out_public_key);
+// end of hackathon code
+
 //=========================== defines ==========================================
 
 #define DB_BUFFER_MAX_BYTES (255U)                           ///< Max bytes in UART receive buffer
@@ -111,6 +117,17 @@ int main(void) {
 
     while (1) {
         protocol_move_raw_command_t command;
+
+        // # AIO DotBot hackaton, June 2, 2023
+        // demonstrating use of echoc-rs functions from C
+        int result = edhoc_add(7, 3); // dummy function
+        if (result == 10) { // using `result` to avoid -Wunused-variable
+          uint8_t out_private_key[32] = {0};
+          uint8_t out_public_key[32] = {0};
+          p256_generate_key_pair_from_c(out_private_key, out_public_key); // generating keypair
+        }
+        // end of hackathon code
+
         // Read Button 1 (P0.11)
         if (!db_gpio_read(&db_btn1)) {
             command.left_y = 100;
