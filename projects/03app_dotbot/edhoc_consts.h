@@ -1,1 +1,1 @@
-/home/gfedrech/Developer/inria/dev/edhoc-rs-FORK/include/edhoc_consts.h
+../03app_dotbot_gateway/edhoc_consts.h
