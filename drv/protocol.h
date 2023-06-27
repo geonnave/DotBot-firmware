@@ -34,6 +34,7 @@ typedef enum {
     DB_PROTOCOL_LH2_WAYPOINTS = 8,   ///< List of LH2 waypoints to follow
     DB_PROTOCOL_GPS_WAYPOINTS = 9,   ///< List of GPS waypoints to follow
     DB_PROTOCOL_SAILBOT_DATA  = 10,  ///< SailBot specific data (for now GPS and direction)
+    DB_PROTOCOL_EDHOC_MSG     = 11,
 } command_type_t;
 
 typedef enum {

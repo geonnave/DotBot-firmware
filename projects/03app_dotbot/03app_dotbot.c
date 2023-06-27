@@ -56,9 +56,14 @@ typedef struct {
     bool                     update_control_loop;                ///< Whether the control loop need an update
     bool                     advertize;                          ///< Whether an advertize packet should be sent
     bool                     update_lh2;                         ///< Whether LH2 data must be processed
+    db_log_dotbot_data_t     log_data;
+    // edhoc stuff
+    bool                     update_edhoc;                       ///< Whether EDHOC data must be processed
+    bool                     gateway_authenticated;
+    EdhocMessageBuffer       edhoc_buffer;                       ///< Internal buffer to store received but not yet handled edhoc messages
+    uint8_t                  prk_out[SHA256_DIGEST_LEN];
     uint8_t                  lh2_update_counter;                 ///< Counter used to track when lh2 data were received and to determine if an advertizement packet is needed
     uint64_t                 device_id;                          ///< Device ID of the DotBot
-    db_log_dotbot_data_t     log_data;
 } dotbot_vars_t;
 
 //=========================== variables ========================================
@@ -73,9 +78,6 @@ static const uint8_t CRED_R[] = "A2026008A101A5010202410A2001215820BBC34960526EA
 static const uint8_t R[] = "72cc4761dbd4c78f758931aa589d348d1ef874a7e303ede2f140dcf3e6aa4aac";
 static const uint8_t I[] = "fb13adeb6518cee5f88417660841142e830a81fe334380a953406a1305e8706b";
 static const uint8_t G_R[] = "bbc34960526ea4d32e940cad2a234148ddc21791a12afbcbac93622046dd44f0";
-
-static RustEdhocInitiatorC initiator;
-static RustEdhocResponderC responder;
 
 //=========================== prototypes =======================================
 
@@ -107,6 +109,11 @@ static void radio_callback(uint8_t *pkt, uint8_t len) {
         // Check application is compatible
         if (header->application != DotBot) {
             break;
+        }
+
+        // Check gateway is authenticated (only proceed if it is an edhoc message)
+        if (!_dotbot_vars.gateway_authenticated && header->type != DB_PROTOCOL_EDHOC_MSG) {
+            continue;
         }
 
         uint8_t *cmd_ptr = ptk_ptr + sizeof(protocol_header_t);
@@ -152,6 +159,13 @@ static void radio_callback(uint8_t *pkt, uint8_t len) {
                     _dotbot_vars.control_mode = ControlAuto;
                 }
             } break;
+            case DB_PROTOCOL_EDHOC_MSG:
+            {
+              uint8_t buffer_len = len - sizeof(protocol_header_t);
+              memcpy(_dotbot_vars.edhoc_buffer.content, cmd_ptr, buffer_len);
+              _dotbot_vars.edhoc_buffer.len = buffer_len;
+              _dotbot_vars.update_edhoc = true;
+            } break;
             default:
                 break;
         }
@@ -163,9 +177,10 @@ static void radio_callback(uint8_t *pkt, uint8_t len) {
 /**
  *  @brief The program starts executing here.
  */
+
 int main(void) {
     db_board_init();
-    db_log_flash_init(LOG_DATA_DOTBOT);
+    //db_log_flash_init(LOG_DATA_DOTBOT); // TODO: re-enable, just disable to make edhoc-rs demo faster
     db_protocol_init();
     db_rgbled_init();
     db_motors_init();
@@ -179,6 +194,7 @@ int main(void) {
     _dotbot_vars.update_control_loop = false;
     _dotbot_vars.advertize           = false;
     _dotbot_vars.update_lh2          = false;
+    _dotbot_vars.update_edhoc        = false; // triggered by radio
     _dotbot_vars.lh2_update_counter  = 0;
 
     // Retrieve the device id once at startup
@@ -192,30 +208,49 @@ int main(void) {
     db_lh2_start(&_dotbot_vars.lh2);
 
     // Initialize EDHOC
-    // TODO: _dotbot_vars.gateway_authenticated = false;
-    initiator = initiator_new(I, 32*2, G_R, 32*2, ID_CRED_I, 4*2, CRED_I, 107*2, ID_CRED_R, 4*2, CRED_R, 84*2);
-    responder = responder_new(R, 32*2, G_I, 32*2, ID_CRED_I, 4*2, CRED_I, 107*2, ID_CRED_R, 4*2, CRED_R, 84*2);
+    RustEdhocInitiatorC initiator = initiator_new(I, 32*2, G_R, 32*2, ID_CRED_I, 4*2, CRED_I, 107*2, ID_CRED_R, 4*2, CRED_R, 84*2);
+    _dotbot_vars.gateway_authenticated = false;
+    bool begin_edhoc = false;
+    const gpio_t edhoc_debug_pin = { .port = DB_DEBUG3_PORT, .pin = DB_DEBUG3_PIN };
+    db_gpio_init(&edhoc_debug_pin, DB_GPIO_IN_PU);
 
     while (1) {
         __WFE();
 
-        EdhocMessageBuffer message_1, message_2, message_3;
-        uint8_t c_r_sent, c_r_received;
-        uint8_t prk_out_initiator[SHA256_DIGEST_LEN], prk_out_responder[SHA256_DIGEST_LEN];
-        if (initiator.state._0 == Start) {
-          initiator_prepare_message_1(&initiator, &message_1);
-
-          responder_process_message_1(&responder, &message_1);
-          responder_prepare_message_2(&responder, &message_2, &c_r_sent);
-        } else if (initiator.state._0 == WaitMessage2) {
-          initiator_process_message_2(&initiator, &message_2, &c_r_received);
-          initiator_prepare_message_3(&initiator, &message_3, &prk_out_initiator);
-
-          responder_process_message_3(&responder, &message_3, &prk_out_responder);
-        } else if (initiator.state._0 == Completed) {
-          // TODO: _dotbot_vars.gateway_authenticated = true;
+        if (!begin_edhoc && db_gpio_read(&edhoc_debug_pin)) {
+            begin_edhoc = true;
         }
 
+        uint8_t c_r_out;
+        if (begin_edhoc && initiator.state._0 == Start) {
+            EdhocMessageBuffer message_1;
+            initiator_prepare_message_1(&initiator, &message_1);
+
+            db_protocol_header_to_buffer(_dotbot_vars.radio_buffer, DB_BROADCAST_ADDRESS, DotBot, DB_PROTOCOL_EDHOC_MSG);
+            memcpy(_dotbot_vars.radio_buffer + sizeof(protocol_header_t), message_1.content, message_1.len);
+            size_t length = sizeof(protocol_header_t) + message_1.len;
+            db_radio_rx_disable();
+            db_radio_tx(_dotbot_vars.radio_buffer, length);
+            db_radio_rx_enable();
+        } else if (_dotbot_vars.update_edhoc && initiator.state._0 == WaitMessage2) {
+            _dotbot_vars.update_edhoc = false;
+            if (initiator_process_message_2(&initiator, &(_dotbot_vars.edhoc_buffer), &c_r_out) == 0) {
+                EdhocMessageBuffer message_3;
+                initiator_prepare_message_3(&initiator, &message_3, _dotbot_vars.prk_out);
+
+                db_protocol_header_to_buffer(_dotbot_vars.radio_buffer, DB_BROADCAST_ADDRESS, DotBot, DB_PROTOCOL_EDHOC_MSG);
+                memcpy(_dotbot_vars.radio_buffer + sizeof(protocol_header_t), message_3.content, message_3.len);
+                size_t length = sizeof(protocol_header_t) + message_3.len;
+                db_radio_rx_disable();
+                db_radio_tx(_dotbot_vars.radio_buffer, length);
+                db_radio_rx_enable();
+                _dotbot_vars.gateway_authenticated = true;
+            }
+        }
+
+        if (!_dotbot_vars.gateway_authenticated) {
+          continue;
+        }
 
         bool need_advertize = false;
         if (_dotbot_vars.update_lh2) {

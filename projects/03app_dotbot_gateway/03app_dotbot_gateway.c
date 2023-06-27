@@ -54,6 +54,11 @@ typedef struct {
     gateway_radio_packet_queue_t radio_queue;                              ///< Queue used to process received radio packets outside of interrupt
     gateway_uart_queue_t         uart_queue;                               ///< Queue used to process received UART bytes outside of interrupt
     bool                         handshake_done;                           ///< Whether startup handshake is done
+    // edhoc stuff
+    bool                         update_edhoc;                             ///< Whether EDHOC data must be processed
+    EdhocMessageBuffer           edhoc_buffer;                             ///< Internal buffer to store received but not yet handled edhoc messages
+    uint8_t                      prk_out[SHA256_DIGEST_LEN];
+    bool                         edhoc_done;
 } gateway_vars_t;
 
 //=========================== variables ========================================
@@ -85,12 +90,22 @@ static void uart_callback(uint8_t data) {
 }
 
 static void radio_callback(uint8_t *packet, uint8_t length) {
-    if (!_gw_vars.handshake_done) {
-        return;
+
+    protocol_header_t *header  = (protocol_header_t *)packet;
+    uint8_t *cmd_ptr = packet + sizeof(protocol_header_t);
+    if (header->type == DB_PROTOCOL_EDHOC_MSG) {
+        uint8_t buffer_len = length - sizeof(protocol_header_t);
+        memcpy(_gw_vars.edhoc_buffer.content, cmd_ptr, buffer_len);
+        _gw_vars.edhoc_buffer.len = buffer_len;
+        _gw_vars.update_edhoc = true;
+    } else {
+        if (!_gw_vars.handshake_done) {
+            return;
+        }
+        memcpy(_gw_vars.radio_queue.packets[_gw_vars.radio_queue.last].buffer, packet, length);
+        _gw_vars.radio_queue.packets[_gw_vars.radio_queue.last].length = length;
+        _gw_vars.radio_queue.last                                      = (_gw_vars.radio_queue.last + 1) & (DB_RADIO_QUEUE_SIZE - 1);
     }
-    memcpy(_gw_vars.radio_queue.packets[_gw_vars.radio_queue.last].buffer, packet, length);
-    _gw_vars.radio_queue.packets[_gw_vars.radio_queue.last].length = length;
-    _gw_vars.radio_queue.last                                      = (_gw_vars.radio_queue.last + 1) & (DB_RADIO_QUEUE_SIZE - 1);
 }
 
 //=========================== main =============================================
@@ -110,6 +125,7 @@ int main(void) {
     _gw_vars.radio_queue.current = 0;
     _gw_vars.radio_queue.last    = 0;
     _gw_vars.handshake_done      = false;
+    _gw_vars.edhoc_done          = false;
     db_uart_init(&db_uart_rx, &db_uart_tx, DB_UART_BAUDRATE, &uart_callback);
 
     db_radio_rx_enable();
@@ -119,7 +135,33 @@ int main(void) {
     db_gpio_init(&db_btn4, DB_GPIO_IN_PU);
     db_gpio_init(&db_btn1, DB_GPIO_IN_PU);
 
+    // Initialize EDHOC
+    RustEdhocResponderC responder = responder_new(R, 32*2, G_I, 32*2, ID_CRED_I, 4*2, CRED_I, 107*2, ID_CRED_R, 4*2, CRED_R, 84*2);
+
     while (1) {
+        if (_gw_vars.update_edhoc && responder.state._0 == Start) {
+            _gw_vars.update_edhoc = false;
+            if (responder_process_message_1(&responder, &_gw_vars.edhoc_buffer) == 0) {
+                EdhocMessageBuffer message_2;
+                uint8_t c_r_out;
+                responder_prepare_message_2(&responder, &message_2, &c_r_out);
+
+                db_protocol_header_to_buffer(_gw_vars.radio_tx_buffer, DB_BROADCAST_ADDRESS, DotBot, DB_PROTOCOL_EDHOC_MSG);
+                memcpy(_gw_vars.radio_tx_buffer + sizeof(protocol_header_t), message_2.content, message_2.len);
+                size_t length = sizeof(protocol_header_t) + message_2.len;
+                db_radio_rx_disable();
+                db_radio_tx(_gw_vars.radio_tx_buffer, length);
+                db_radio_rx_enable();
+            } else {
+                responder = responder_new(R, 32*2, G_I, 32*2, ID_CRED_I, 4*2, CRED_I, 107*2, ID_CRED_R, 4*2, CRED_R, 84*2);
+            }
+        } else if (_gw_vars.update_edhoc && responder.state._0 == WaitMessage3) {
+            _gw_vars.update_edhoc = false;
+           if (responder_process_message_3(&responder, &_gw_vars.edhoc_buffer, &_gw_vars.prk_out) == 0) {
+                _gw_vars.edhoc_done = true;
+            }
+        }
+
         protocol_move_raw_command_t command;
         // Read Button 1 (P0.11)
         if (!db_gpio_read(&db_btn1)) {
@@ -130,28 +172,9 @@ int main(void) {
             command.left_y = 0;
         }
 
-        // basic tests code
-        int32_t r = edhoc_add(2, 3);
-
-        RustEdhocInitiatorC initiator = initiator_new(I, 32*2, G_R, 32*2, ID_CRED_I, 4*2, CRED_I, 107*2, ID_CRED_R, 4*2, CRED_R, 84*2);
-        RustEdhocResponderC responder = responder_new(R, 32*2, G_I, 32*2, ID_CRED_I, 4*2, CRED_I, 107*2, ID_CRED_R, 4*2, CRED_R, 84*2);
-        EdhocMessageBuffer message_1;
-        initiator_prepare_message_1(&initiator, &message_1);
-        responder_process_message_1(&responder, &message_1);
-        EdhocMessageBuffer message_2;
-        uint8_t c_r_sent;
-        responder_prepare_message_2(&responder, &message_2, &c_r_sent);
-        uint8_t c_r_received;
-        initiator_process_message_2(&initiator, &message_2, &c_r_received);
-        EdhocMessageBuffer message_3;
-        uint8_t prk_out_initiator[SHA256_DIGEST_LEN];
-        initiator_prepare_message_3(&initiator, &message_3, &prk_out_initiator);
-        uint8_t prk_out_responder[SHA256_DIGEST_LEN];
-        responder_process_message_3(&responder, &message_3, &prk_out_responder);
-
         // Read Button 2 (P0.12)
         if (!db_gpio_read(&db_btn3)) {
-            command.right_y = 100 + r;
+            command.right_y = 100;
         } else if (!db_gpio_read(&db_btn4)) {
             command.right_y = -100;
         } else {
