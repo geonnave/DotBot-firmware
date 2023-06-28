@@ -28,6 +28,10 @@
 #include "log_flash.h"
 #include "edhoc_rs.h"
 
+#ifdef RUST_PSA
+extern void mbedtls_memory_buffer_alloc_init(uint8_t *buf, size_t len);
+#endif
+
 //=========================== defines ==========================================
 
 #define DB_LH2_UPDATE_DELAY_MS    (100U)   ///< 100ms delay between each LH2 data refresh
@@ -113,7 +117,7 @@ static void radio_callback(uint8_t *pkt, uint8_t len) {
 
         // Check gateway is authenticated (only proceed if it is an edhoc message)
         if (!_dotbot_vars.gateway_authenticated && header->type != DB_PROTOCOL_EDHOC_MSG) {
-            continue;
+            break;
         }
 
         uint8_t *cmd_ptr = ptk_ptr + sizeof(protocol_header_t);
@@ -213,6 +217,12 @@ int main(void) {
     bool begin_edhoc = false;
     const gpio_t edhoc_debug_pin = { .port = DB_DEBUG3_PORT, .pin = DB_DEBUG3_PIN };
     db_gpio_init(&edhoc_debug_pin, DB_GPIO_IN_PU);
+
+    // Memory buffer for mbedtls
+    #ifdef RUST_PSA
+    char buffer[4096 * 2] = {0};
+    mbedtls_memory_buffer_alloc_init(buffer, 4096 * 2);
+    #endif
 
     while (1) {
         __WFE();

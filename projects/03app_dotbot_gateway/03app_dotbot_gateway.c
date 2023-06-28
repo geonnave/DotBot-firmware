@@ -138,6 +138,12 @@ int main(void) {
     // Initialize EDHOC
     RustEdhocResponderC responder = responder_new(R, 32*2, G_I, 32*2, ID_CRED_I, 4*2, CRED_I, 107*2, ID_CRED_R, 4*2, CRED_R, 84*2);
 
+    // Memory buffer for mbedtls
+    #ifdef RUST_PSA
+    char buffer[4096 * 2] = {0};
+    mbedtls_memory_buffer_alloc_init(buffer, 4096 * 2);
+    #endif
+
     while (1) {
         if (_gw_vars.update_edhoc && responder.state._0 == Start) {
             _gw_vars.update_edhoc = false;

@@ -9,6 +9,7 @@
     <configuration
       Name="Debug"
       build_treat_warnings_as_errors="No"
+      c_additional_options=""
       linker_additional_files="libedhoc_rs.a" />
     <folder Name="Device Files">
       <file file_name="$(DeviceCommonHeaderFile)" />
