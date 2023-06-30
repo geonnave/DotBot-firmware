@@ -136,7 +136,7 @@ int main(void) {
     db_gpio_init(&db_btn1, DB_GPIO_IN_PU);
 
     // Initialize EDHOC
-    RustEdhocResponderC responder = responder_new(R, 32*2, G_I, 32*2, ID_CRED_I, 4*2, CRED_I, 107*2, ID_CRED_R, 4*2, CRED_R, 84*2);
+    EdhocResponderC responder = responder_new(R, 32*2, G_I, 32*2, ID_CRED_I, 4*2, CRED_I, 107*2, ID_CRED_R, 4*2, CRED_R, 84*2);
 
     // Memory buffer for mbedtls
     #ifdef RUST_PSA

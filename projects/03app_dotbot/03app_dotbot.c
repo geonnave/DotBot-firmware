@@ -212,7 +212,7 @@ int main(void) {
     db_lh2_start(&_dotbot_vars.lh2);
 
     // Initialize EDHOC
-    RustEdhocInitiatorC initiator = initiator_new(I, 32*2, G_R, 32*2, ID_CRED_I, 4*2, CRED_I, 107*2, ID_CRED_R, 4*2, CRED_R, 84*2);
+    EdhocInitiatorC initiator = initiator_new(I, 32*2, G_R, 32*2, ID_CRED_I, 4*2, CRED_I, 107*2, ID_CRED_R, 4*2, CRED_R, 84*2);
     _dotbot_vars.gateway_authenticated = false;
     bool begin_edhoc = false;
     const gpio_t edhoc_debug_pin = { .port = DB_DEBUG3_PORT, .pin = DB_DEBUG3_PIN };
