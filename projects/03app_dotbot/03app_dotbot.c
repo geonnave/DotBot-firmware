@@ -217,6 +217,8 @@ int main(void) {
     bool begin_edhoc = false;
     const gpio_t edhoc_debug_pin = { .port = DB_DEBUG3_PORT, .pin = DB_DEBUG3_PIN };
     db_gpio_init(&edhoc_debug_pin, DB_GPIO_IN_PU);
+    printf("Dotbot initialized.\n");
+    printf("Gateway NOT authenticated.\n");
 
     // Memory buffer for mbedtls
     #ifdef RUST_PSA
@@ -233,6 +235,7 @@ int main(void) {
 
         uint8_t c_r_out;
         if (begin_edhoc && initiator.state._0 == Start) {
+            printf("Beginning handhsake...");
             EdhocMessageBuffer message_1;
             initiator_prepare_message_1(&initiator, &message_1);
 
@@ -245,6 +248,7 @@ int main(void) {
         } else if (_dotbot_vars.update_edhoc && initiator.state._0 == WaitMessage2) {
             _dotbot_vars.update_edhoc = false;
             if (initiator_process_message_2(&initiator, &(_dotbot_vars.edhoc_buffer), &c_r_out) == 0) {
+                printf(" ...\n");
                 EdhocMessageBuffer message_3;
                 initiator_prepare_message_3(&initiator, &message_3, _dotbot_vars.prk_out);
 
@@ -255,6 +259,13 @@ int main(void) {
                 db_radio_tx(_dotbot_vars.radio_buffer, length);
                 db_radio_rx_enable();
                 _dotbot_vars.gateway_authenticated = true;
+
+                printf("\nDotBot <-> Gateway authenticated.\n");
+                printf("Derived key:   ");
+                for (size_t i = 0; i < SHA256_DIGEST_LEN; i++) {
+                    printf("%X ", _dotbot_vars.prk_out[i]);
+                }
+                printf("\n");
             }
         }
 

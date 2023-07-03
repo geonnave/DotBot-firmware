@@ -143,11 +143,14 @@ int main(void) {
     char buffer[4096 * 2] = {0};
     mbedtls_memory_buffer_alloc_init(buffer, 4096 * 2);
     #endif
+    printf("Gateway initialized.\n");
 
     while (1) {
         if (_gw_vars.update_edhoc && responder.state._0 == Start) {
             _gw_vars.update_edhoc = false;
+            printf("New EDHOC message.\n");
             if (responder_process_message_1(&responder, &_gw_vars.edhoc_buffer) == 0) {
+                printf("Processed message_1 ...\n");
                 EdhocMessageBuffer message_2;
                 uint8_t c_r_out;
                 responder_prepare_message_2(&responder, &message_2, &c_r_out);
@@ -165,6 +168,12 @@ int main(void) {
             _gw_vars.update_edhoc = false;
            if (responder_process_message_3(&responder, &_gw_vars.edhoc_buffer, &_gw_vars.prk_out) == 0) {
                 _gw_vars.edhoc_done = true;
+                printf("\nGateway <-> DotBot authenticated\n");
+                printf("Derived key:   ");
+                for (size_t i = 0; i < SHA256_DIGEST_LEN; i++) {
+                    printf("%X ", _gw_vars.prk_out[i]);
+                }
+                printf("\n");
             }
         }
 
