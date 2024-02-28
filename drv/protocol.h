@@ -38,6 +38,7 @@ typedef enum {
     DB_PROTOCOL_SAILBOT_DATA       = 10,  ///< SailBot specific data (for now GPS and direction)
     DB_PROTOCOL_CMD_XGO_ACTION     = 11,  ///< XGO action command
     DB_PROTOCOL_LH2_PROCESSED_DATA = 12,  ///< Lighthouse 2 data processed at the DotBot
+    DB_PROTOCOL_EDHOC_MSG          = 13,
 } command_type_t;
 
 /// Application type

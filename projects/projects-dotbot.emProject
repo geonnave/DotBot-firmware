@@ -6,6 +6,10 @@
       project_dependencies="00bsp_dotbot_board(bsp);00bsp_dotbot_lh2(bsp);00bsp_timer(bsp);00drv_dotbot_hdlc(drv);00drv_dotbot_protocol(drv);00bsp_radio(bsp);00drv_log_flash(drv);00drv_rgbled_pwm(drv);00drv_motors(drv)"
       project_directory="03app_dotbot"
       project_type="Executable" />
+    <configuration
+      Name="Debug"
+      build_treat_warnings_as_errors="No"
+      linker_additional_files="liblakers_c.a" />
     <folder Name="Device Files">
       <file file_name="$(DeviceCommonHeaderFile)" />
       <file file_name="$(DeviceHeaderFile)" />
