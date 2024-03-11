@@ -8,8 +8,13 @@
       project_type="Executable" />
     <configuration
       Name="Debug"
+      arm_compiler_variant="gcc"
+      arm_linker_variant="SEGGER"
       build_treat_warnings_as_errors="No"
-      linker_additional_files="liblakers_c.a" />
+      c_additional_options=""
+      gcc_optimization_level="Level 0"
+      linker_additional_files="liblakers_c.a"
+      linker_additional_options="" />
     <folder Name="Device Files">
       <file file_name="$(DeviceCommonHeaderFile)" />
       <file file_name="$(DeviceHeaderFile)" />

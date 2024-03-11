@@ -6,6 +6,10 @@
       project_dependencies="00bsp_radio(bsp);00bsp_dotbot_board(bsp);00bsp_uart(bsp);00bsp_timer(bsp);00bsp_uart(bsp);00drv_dotbot_hdlc(drv);00drv_dotbot_protocol(drv);00bsp_gpio(bsp)"
       project_directory="03app_dotbot_gateway"
       project_type="Executable" />
+    <configuration
+      Name="Debug"
+      arm_compiler_variant="SEGGER"
+      arm_linker_variant="SEGGER" />
     <folder Name="Device Files">
       <file file_name="$(DeviceCommonHeaderFile)" />
       <file file_name="$(DeviceHeaderFile)" />
@@ -43,7 +47,7 @@
       <file file_name="$(SeggerThumbStartup)" />
     </folder>
   </project>
-<project Name="03app_dotbot_gateway_lr">
+  <project Name="03app_dotbot_gateway_lr">
     <configuration
       Name="Common"
       project_dependencies="00bsp_radio(bsp);00bsp_dotbot_board(bsp);00bsp_uart(bsp);00bsp_timer(bsp);00bsp_uart(bsp);00drv_dotbot_hdlc(drv);00drv_dotbot_protocol(drv);00bsp_gpio(bsp)"

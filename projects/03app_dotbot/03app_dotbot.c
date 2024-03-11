@@ -104,12 +104,24 @@ static const uint8_t CRED_R[] = {0xA2, 0x02, 0x60, 0x08, 0xA1, 0x01, 0xA5, 0x01,
 
 // for EAD authz
 static const uint8_t ID_U[] = {0xa1, 0x04, 0x41, 0x2b};
-static const uint8_t ID_U_LEN = sizeof(ID_U) / sizeof(ID_U[0]);
+static const size_t ID_U_LEN = sizeof(ID_U) / sizeof(ID_U[0]);
 static const BytesP256ElemLen G_W = {0xFF, 0xA4, 0xF1, 0x02, 0x13, 0x40, 0x29, 0xB3, 0xB1, 0x56, 0x89, 0x0B, 0x88, 0xC9, 0xD9, 0x61, 0x95, 0x01, 0x19, 0x65, 0x74, 0x17, 0x4D, 0xCB, 0x68, 0xA0, 0x7D, 0xB0, 0x58, 0x8E, 0x4D, 0x41};
-//static const uint8_t LOC_W[] = {0x63, 0x6F, 0x61, 0x70, 0x3A, 0x2F, 0x2F, 0x65, 0x6E, 0x72, 0x6F, 0x6C, 0x6C, 0x6D, 0x65, 0x6E, 0x74, 0x2E, 0x73, 0x65, 0x72, 0x76, 0x65, 0x72};
-static const uint8_t LOC_W[] = "http://localhost:18000";
-static const uint8_t LOC_W_LEN = (sizeof(LOC_W) / sizeof(LOC_W[0])) - 1;
+//static const uint8_t LOC_W[] = "http://localhost:18000";
+//static const uint8_t LOC_W_LEN = (sizeof(LOC_W) / sizeof(LOC_W[0])) - 1;
+static const uint8_t LOC_W[] =   {0x68, 0x74, 0x74, 0x70, 0x3a, 0x2f, 0x2f, 0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x68, 0x6f, 0x73, 0x74, 0x3a, 0x31, 0x38, 0x30, 0x30, 0x30};
+static const size_t LOC_W_LEN = (sizeof(LOC_W) / sizeof(LOC_W[0]));
 static const uint8_t SS = 2;
+
+CredentialRPK cred_i = {0}, cred_r = {0};
+EdhocInitiator initiator = {0};
+EadAuthzDevice device = {0};
+EdhocMessageBuffer message_1 = {0};
+EADItemC ead_2 = {0};
+uint8_t c_r = 0;
+CredentialRPK fetched_cred_r = {0};
+EdhocMessageBuffer message_2 = {0};
+EdhocMessageBuffer message_3 = {0};
+uint8_t prk_out[SHA256_DIGEST_LEN] = {0};
 
 //=========================== prototypes =======================================
 
@@ -192,7 +204,7 @@ static void radio_callback(uint8_t *pkt, uint8_t len) {
         } break;
         case DB_PROTOCOL_EDHOC_MSG:
         {
-            uint8_t buffer_len = len - sizeof(protocol_header_t) - 2;
+            uint8_t buffer_len = len - sizeof(protocol_header_t) - 2; // why -2?
             memcpy(_dotbot_vars.edhoc_buffer.content, cmd_ptr, buffer_len);
             _dotbot_vars.edhoc_buffer.len = buffer_len;
             _dotbot_vars.update_edhoc = true;
@@ -244,22 +256,25 @@ int main(void) {
     //#endif
 
     puts("Initializing EDHOC and EAD authz");
-    CredentialRPK cred_i = {0}, cred_r = {0};
-    credential_rpk_new(CRED_I, 107, &cred_i);
-    credential_rpk_new(CRED_R, 84, &cred_r);
-    EdhocInitiatorC initiator = initiator_new();
-    EdhocInitiatorWaitM2C initiator_wait_m2 = {0};
-    EdhocInitiatorProcessingM2C initiator_processing_m2 = {0};
-    EdhocInitiatorProcessedM2C initiator_processed_m2 = {0};
-    EdhocInitiatorDoneC initiator_done = {0};
-    ZeroTouchDevice device = authz_device_new(ID_U, ID_U_LEN, &G_W, LOC_W, LOC_W_LEN);
-    ZeroTouchDeviceWaitEAD2 device_wait = {0};
+    //credential_rpk_new(&cred_i, CRED_I, 107);
+    //credential_rpk_new(&cred_r, CRED_R, 84);
+    initiator_new(&initiator);
+    //authz_device_new(&device, ID_U, ID_U_LEN, &G_W, LOC_W, LOC_W_LEN);
     _dotbot_vars.gateway_authenticated = false;
     int edhoc_state = 0;
     bool begin_edhoc = false;
     bool wait_edhoc_msg2 = false;
     printf("Dotbot initialized.\n");
     printf("Gateway NOT authenticated.\n");
+
+    //uint8_t x[32] = {9, 30, 78, 134, 71, 99, 112, 133, 178, 191, 135, 143, 89, 156, 186, 158, 129, 75, 18, 196, 223, 72, 188, 131, 141, 230, 114, 111, 15, 40, 19, 129};
+    //memcpy(initiator.wait_m2.x, x, 32);
+    //uint8_t h_message_1[] = {146, 160, 183, 34, 21, 211, 239, 11, 169, 240, 222, 64, 77, 141, 81, 120, 222, 138, 234, 122, 243, 199, 31, 35, 70, 90, 11, 252, 182, 180, 168, 30};
+    //uint8_t content[] = {88, 43, 184, 15, 89, 75, 215, 163, 122, 251, 33, 90, 37, 15, 35, 196, 216, 15, 217, 105, 13, 35, 252, 244, 159, 8, 160, 139, 109, 53, 40, 111, 103, 94, 31, 84, 205, 139, 77, 120, 82, 194, 80, 135, 95};
+    //memcpy(message_2.content, content, 45);
+    //message_2.len = 45;
+    //edhoc_state = 1;
+    //_dotbot_vars.update_edhoc = true;
 
     while (1) {
         __WFE();
@@ -268,14 +283,14 @@ int main(void) {
         if (edhoc_state == 0) {
             edhoc_state = 1;
             printf("Beginning handhsake...");
-            puts("computing authz_secret.");
-            BytesP256ElemLen authz_secret;
-            initiator_compute_ephemeral_secret(&initiator, &G_W, &authz_secret);
-            EADItemC ead_1;
-            authz_device_prepare_ead_1(&device, &authz_secret, SS, &device_wait, &ead_1);
+            //puts("computing authz_secret.");
+            //BytesP256ElemLen authz_secret = {0};
+            //initiator_compute_ephemeral_secret(&initiator, &G_W, &authz_secret);
+            //EADItemC ead_1 = {0};
+            //authz_device_prepare_ead_1(&device, &authz_secret, SS, &ead_1);
+            //initiator_prepare_message_1(&initiator, NULL, &ead_1, &message_1);
 
-            EdhocMessageBuffer message_1;
-            initiator_prepare_message_1(&initiator, NULL, &ead_1, &initiator_wait_m2, &message_1);
+            initiator_prepare_message_1(&initiator, NULL, NULL, &message_1);
 
             db_protocol_header_to_buffer(_dotbot_vars.radio_buffer, DB_BROADCAST_ADDRESS, DotBot, DB_PROTOCOL_EDHOC_MSG);
             memcpy(_dotbot_vars.radio_buffer + sizeof(protocol_header_t), message_1.content, message_1.len);
@@ -286,21 +301,16 @@ int main(void) {
         } else if (_dotbot_vars.update_edhoc && edhoc_state == 1) {
             _dotbot_vars.update_edhoc = false;
 
-            EADItemC ead_2 = {0};
-            uint8_t c_r = 0;
-            CredentialRPK fetched_cred_r = {0};
-            EdhocMessageBuffer message_2 = {0};
-            //EdhocMessageBuffer *message_2 = &(_dotbot_vars.edhoc_buffer);
-            memcpy(message_2.content, _dotbot_vars.edhoc_buffer.content, _dotbot_vars.edhoc_buffer.len);
+            memcpy(&message_2.content, &_dotbot_vars.edhoc_buffer.content, _dotbot_vars.edhoc_buffer.len);
             message_2.len = _dotbot_vars.edhoc_buffer.len;
             int8_t res = initiator_parse_message_2(
-                &initiator_wait_m2,
+                &initiator,
                 &message_2,
-                cred_r,
-                &initiator_processing_m2,
+                &cred_r,
                 &c_r,
                 &fetched_cred_r,
                 &ead_2
+                //NULL
             );
             if (res != 0) {
                 printf("Error parse msg2: %d\n", res);
@@ -309,43 +319,39 @@ int main(void) {
             }
 
             puts("processing ead2");
-            ZeroTouchDeviceDone device_done;
-            res = authz_device_process_ead_2(&device_wait, &ead_2, cred_r, &device_done);
-            if (res != 0) {
-                printf("Error process ead2 (authz): %d\n", res);
-                edhoc_state = -1;
-                continue;
-            }
+            //res = authz_device_process_ead_2(&device, &ead_2, cred_r);
+            //if (res != 0) {
+            //    printf("Error process ead2 (authz): %d\n", res);
+            //    edhoc_state = -1;
+            //    continue;
+            //}
 
-            res = initiator_verify_message_2(&initiator_processing_m2, &I, cred_i, fetched_cred_r, &initiator_processed_m2);
-            if (res != 0) {
-                printf("Error verify msg2: %d\n", res);
-                continue;
-            }
+            //res = initiator_verify_message_2(&initiator, &I, cred_i, fetched_cred_r);
+            //if (res != 0) {
+            //    printf("Error verify msg2: %d\n", res);
+            //    continue;
+            //}
 
-            puts("preparing msg3");
-            EdhocInitiatorDoneC initiator_done;
-            EdhocMessageBuffer message_3;
-            uint8_t prk_out[SHA256_DIGEST_LEN];
-            res = initiator_prepare_message_3(&initiator_processed_m2, ByReference, NULL, &initiator_done, &message_3, prk_out);
-            if (res != 0) {
-                printf("Error prep msg3: %d\n", res);
-                continue;
-            }
+            //puts("preparing msg3");
+            //res = initiator_prepare_message_3(&initiator, ByReference, NULL, &message_3, prk_out);
+            //if (res != 0) {
+            //    printf("Error prep msg3: %d\n", res);
+            //    continue;
+            //}
 
-            db_protocol_header_to_buffer(_dotbot_vars.radio_buffer, DB_BROADCAST_ADDRESS, DotBot, DB_PROTOCOL_EDHOC_MSG);
-            memcpy(_dotbot_vars.radio_buffer + sizeof(protocol_header_t), message_3.content, message_3.len);
-            size_t length = sizeof(protocol_header_t) + message_3.len;
-            db_radio_disable();
-            db_radio_tx(_dotbot_vars.radio_buffer, length);
-            _dotbot_vars.gateway_authenticated = true;
+            //db_protocol_header_to_buffer(_dotbot_vars.radio_buffer, DB_BROADCAST_ADDRESS, DotBot, DB_PROTOCOL_EDHOC_MSG);
+            //memcpy(_dotbot_vars.radio_buffer + sizeof(protocol_header_t), message_3.content, message_3.len);
+            //size_t length = sizeof(protocol_header_t) + message_3.len;
+            //db_radio_disable();
+            //db_radio_tx(_dotbot_vars.radio_buffer, length);
+            //_dotbot_vars.gateway_authenticated = true;
 
-            printf("\nDotBot <-> Gateway authenticated.\n");
-            printf("Derived key:   ");
-            for (size_t i = 0; i < SHA256_DIGEST_LEN; i++) {
-                printf("%X ", _dotbot_vars.prk_out[i]);
-            }
-            printf("\n");
+            //printf("\nDotBot <-> Gateway authenticated.\n");
+            //printf("Derived key:   ");
+            //for (size_t i = 0; i < SHA256_DIGEST_LEN; i++) {
+            //    printf("%X ", _dotbot_vars.prk_out[i]);
+            //}
+            //printf("\n");
         }
 
         if (!_dotbot_vars.gateway_authenticated) {
