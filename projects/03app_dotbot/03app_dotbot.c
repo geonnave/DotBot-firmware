@@ -57,7 +57,7 @@ extern void mbedtls_memory_buffer_alloc_init(uint8_t *buf, size_t len);
 #define DB_ANGULAR_SPEED_FACTOR (30)   ///< Constant applied to the normalized angle to target error
 #define DB_ANGULAR_SIDE_FACTOR  (1)    ///< Angular side factor
 #endif
-#define EDHOC_INITIATOR_INDEX 1
+#define EDHOC_INITIATOR_INDEX 0
 
 typedef struct {
     uint32_t                 ts_last_packet_received;            ///< Last timestamp in microseconds a control packet was received
@@ -106,8 +106,6 @@ static const BytesP256ElemLen I[2] = {
   {0x1f, 0x7e, 0x4a, 0xe4, 0x29, 0x3a, 0x34, 0x8b, 0xf2, 0xb1, 0x36, 0x5c, 0xe0, 0x98, 0xaa, 0x49, 0xc2, 0x07, 0xbd, 0x1b, 0xa7, 0xdd, 0xde, 0xcd, 0xfa, 0xd6, 0x0c, 0xad, 0xe8, 0x2e, 0x9e, 0xf5},
   {0x3c, 0xa8, 0x54, 0xbf, 0xaa, 0x90, 0xda, 0x16, 0xe1, 0xa8, 0xfa, 0xcc, 0x0c, 0xd8, 0x34, 0x92, 0x7e, 0xc0, 0xb3, 0x19, 0x74, 0x8b, 0xb4, 0x79, 0xf1, 0x31, 0x6b, 0x8d, 0x38, 0x30, 0x74, 0xa8},
 };
-// FIXME: remove this CRED_R
-static const uint8_t CRED_R[] = {0xa2, 0x02, 0x6b, 0x65, 0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x2e, 0x65, 0x64, 0x75, 0x08, 0xa1, 0x01, 0xa5, 0x01, 0x02, 0x02, 0x41, 0x32, 0x20, 0x01, 0x21, 0x58, 0x20, 0xbb, 0xc3, 0x49, 0x60, 0x52, 0x6e, 0xa4, 0xd3, 0x2e, 0x94, 0x0c, 0xad, 0x2a, 0x23, 0x41, 0x48, 0xdd, 0xc2, 0x17, 0x91, 0xa1, 0x2a, 0xfb, 0xcb, 0xac, 0x93, 0x62, 0x20, 0x46, 0xdd, 0x44, 0xf0, 0x22, 0x58, 0x20, 0x45, 0x19, 0xe2, 0x57, 0x23, 0x6b, 0x2a, 0x0c, 0xe2, 0x02, 0x3f, 0x09, 0x31, 0xf1, 0xf3, 0x86, 0xca, 0x7a, 0xfd, 0xa6, 0x4f, 0xcd, 0xe0, 0x10, 0x8c, 0x22, 0x4c, 0x51, 0xea, 0xbf, 0x60, 0x72};
 
 // for EAD authz
 static const uint8_t ID_U[2][4] = {
@@ -118,20 +116,20 @@ static const size_t ID_U_LEN = sizeof(ID_U[EDHOC_INITIATOR_INDEX]) / sizeof(ID_U
 static const BytesP256ElemLen G_W = {0xFF, 0xA4, 0xF1, 0x02, 0x13, 0x40, 0x29, 0xB3, 0xB1, 0x56, 0x89, 0x0B, 0x88, 0xC9, 0xD9, 0x61, 0x95, 0x01, 0x19, 0x65, 0x74, 0x17, 0x4D, 0xCB, 0x68, 0xA0, 0x7D, 0xB0, 0x58, 0x8E, 0x4D, 0x41};
 static const uint8_t LOC_W[] = "http://localhost:18000";
 static const uint8_t LOC_W_LEN = (sizeof(LOC_W) / sizeof(LOC_W[0])) - 1; // -1 to discard the \0 at the end
-//static const uint8_t LOC_W[] =   {0x68, 0x74, 0x74, 0x70, 0x3a, 0x2f, 0x2f, 0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x68, 0x6f, 0x73, 0x74, 0x3a, 0x31, 0x38, 0x30, 0x30, 0x30};
-//static const size_t LOC_W_LEN = (sizeof(LOC_W) / sizeof(LOC_W[0]));
 static const uint8_t SS = 2;
 
-static CredentialRPK cred_i = {0}, cred_r = {0};
+// used during execution of EDHOC
+static CredentialRPK cred_i = {0}, id_cred_r = {0};
 static EdhocInitiator initiator = {0};
-static EadAuthzDevice device = {0};
 static EdhocMessageBuffer message_1 = {0};
-static EADItemC ead_2 = {0};
 static uint8_t c_r = 0;
-static CredentialRPK fetched_cred_r = {0};
 static EdhocMessageBuffer message_2 = {0};
 static EdhocMessageBuffer message_3 = {0};
 static uint8_t prk_out[SHA256_DIGEST_LEN] = {0};
+// used during execution of authz
+static EadAuthzDevice device = {0};
+static EADItemC ead_1 = {0}, ead_2 = {0};
+static BytesP256ElemLen authz_secret = {0};
 
 //=========================== prototypes =======================================
 
@@ -267,7 +265,6 @@ int main(void) {
 
     puts("Initializing EDHOC and EAD authz");
     credential_rpk_new(&cred_i, CRED_I[EDHOC_INITIATOR_INDEX], sizeof(CRED_I[EDHOC_INITIATOR_INDEX]) / sizeof(CRED_I[EDHOC_INITIATOR_INDEX][0]));
-    credential_rpk_new(&cred_r, CRED_R, 95);
     initiator_new(&initiator);
     authz_device_new(&device, ID_U[EDHOC_INITIATOR_INDEX], ID_U_LEN, &G_W, LOC_W, LOC_W_LEN);
     _dotbot_vars.gateway_authenticated = false;
@@ -277,15 +274,6 @@ int main(void) {
     printf("Dotbot initialized.\n");
     printf("Gateway NOT authenticated.\n");
 
-    //uint8_t x[32] = {9, 30, 78, 134, 71, 99, 112, 133, 178, 191, 135, 143, 89, 156, 186, 158, 129, 75, 18, 196, 223, 72, 188, 131, 141, 230, 114, 111, 15, 40, 19, 129};
-    //memcpy(initiator.wait_m2.x, x, 32);
-    //uint8_t h_message_1[] = {146, 160, 183, 34, 21, 211, 239, 11, 169, 240, 222, 64, 77, 141, 81, 120, 222, 138, 234, 122, 243, 199, 31, 35, 70, 90, 11, 252, 182, 180, 168, 30};
-    //uint8_t content[] = {88, 43, 184, 15, 89, 75, 215, 163, 122, 251, 33, 90, 37, 15, 35, 196, 216, 15, 217, 105, 13, 35, 252, 244, 159, 8, 160, 139, 109, 53, 40, 111, 103, 94, 31, 84, 205, 139, 77, 120, 82, 194, 80, 135, 95};
-    //memcpy(message_2.content, content, 45);
-    //message_2.len = 45;
-    //edhoc_state = 1;
-    //_dotbot_vars.update_edhoc = true;
-
     while (1) {
         __WFE();
 
@@ -293,9 +281,7 @@ int main(void) {
             edhoc_state = 1;
             printf("Beginning handhsake...");
             puts("computing authz_secret.");
-            BytesP256ElemLen authz_secret = {0};
             initiator_compute_ephemeral_secret(&initiator, &G_W, &authz_secret);
-            EADItemC ead_1 = {0};
             authz_device_prepare_ead_1(&device, &authz_secret, SS, &ead_1);
             initiator_prepare_message_1(&initiator, NULL, &ead_1, &message_1);
             memcpy(device.wait_ead2.h_message_1, initiator.wait_m2.h_message_1, SHA256_DIGEST_LEN);
@@ -316,9 +302,8 @@ int main(void) {
             int8_t res = initiator_parse_message_2(
                 &initiator,
                 &message_2,
-                &cred_r,
                 &c_r,
-                &fetched_cred_r,
+                &id_cred_r,
                 &ead_2
             );
             if (res != 0) {
@@ -326,18 +311,24 @@ int main(void) {
                 edhoc_state = -1;
                 continue;
             }
+            res = credential_check_or_fetch(NULL, &id_cred_r);
+            if (res != 0) {
+                printf("Error handling credential: %d\n", res);
+                return 1;
+            }
 
             puts("processing ead2");
-            res = authz_device_process_ead_2(&device, &ead_2, &cred_r);
+            res = authz_device_process_ead_2(&device, &ead_2, &id_cred_r);
             if (res != 0) {
                 printf("Error process ead2 (authz): %d\n", res);
                 edhoc_state = -1;
                 continue;
             }
 
-            res = initiator_verify_message_2(&initiator, &I[EDHOC_INITIATOR_INDEX], &cred_i, &fetched_cred_r);
+            res = initiator_verify_message_2(&initiator, &I[EDHOC_INITIATOR_INDEX], &cred_i, &id_cred_r);
             if (res != 0) {
                 printf("Error verify msg2: %d\n", res);
+                edhoc_state = -1;
                 continue;
             }
 
@@ -345,6 +336,7 @@ int main(void) {
             res = initiator_prepare_message_3(&initiator, ByReference, NULL, &message_3, _dotbot_vars.prk_out);
             if (res != 0) {
                 printf("Error prep msg3: %d\n", res);
+                edhoc_state = -1;
                 continue;
             }
 
