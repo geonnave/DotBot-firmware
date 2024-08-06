@@ -119,7 +119,8 @@ static const uint8_t LOC_W_LEN = (sizeof(LOC_W) / sizeof(LOC_W[0])) - 1; // -1 t
 static const uint8_t SS = 2;
 
 // used during execution of EDHOC
-static CredentialRPK cred_i = {0}, id_cred_r = {0};
+static CredentialC cred_i = {0}, fetched_cred_r = {0};
+static IdCred id_cred_r = {0};
 static EdhocInitiator initiator = {0};
 static EdhocMessageBuffer message_1 = {0};
 static uint8_t c_r = 0;
@@ -264,7 +265,7 @@ int main(void) {
     //#endif
 
     puts("Initializing EDHOC and EAD authz");
-    credential_rpk_new(&cred_i, CRED_I[EDHOC_INITIATOR_INDEX], sizeof(CRED_I[EDHOC_INITIATOR_INDEX]) / sizeof(CRED_I[EDHOC_INITIATOR_INDEX][0]));
+    credential_new(&cred_i, CRED_I[EDHOC_INITIATOR_INDEX], sizeof(CRED_I[EDHOC_INITIATOR_INDEX]) / sizeof(CRED_I[EDHOC_INITIATOR_INDEX][0]));
     initiator_new(&initiator);
     authz_device_new(&device, ID_U[EDHOC_INITIATOR_INDEX], ID_U_LEN, &G_W, LOC_W, LOC_W_LEN);
     _dotbot_vars.gateway_authenticated = false;
@@ -311,21 +312,21 @@ int main(void) {
                 edhoc_state = -1;
                 continue;
             }
-            res = credential_check_or_fetch(NULL, &id_cred_r);
+            res = credential_check_or_fetch(NULL, &id_cred_r, &fetched_cred_r);
             if (res != 0) {
                 printf("Error handling credential: %d\n", res);
                 return 1;
             }
 
             puts("processing ead2");
-            res = authz_device_process_ead_2(&device, &ead_2, &id_cred_r);
+            res = authz_device_process_ead_2(&device, &ead_2, &fetched_cred_r);
             if (res != 0) {
                 printf("Error process ead2 (authz): %d\n", res);
                 edhoc_state = -1;
                 continue;
             }
 
-            res = initiator_verify_message_2(&initiator, &I[EDHOC_INITIATOR_INDEX], &cred_i, &id_cred_r);
+            res = initiator_verify_message_2(&initiator, &I[EDHOC_INITIATOR_INDEX], &cred_i, &fetched_cred_r);
             if (res != 0) {
                 printf("Error verify msg2: %d\n", res);
                 edhoc_state = -1;
