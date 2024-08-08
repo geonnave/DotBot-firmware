@@ -132,6 +132,10 @@ static EadAuthzDevice device = {0};
 static EADItemC ead_1 = {0}, ead_2 = {0};
 static BytesP256ElemLen authz_secret = {0};
 
+// measuring authz
+static const gpio_t edhoc_pin = { .port = 0, .pin = 20 };
+static const gpio_t authz_pin = { .port = 0, .pin = 25 };
+
 //=========================== prototypes =======================================
 
 static void _timeout_check(void);
@@ -266,26 +270,34 @@ int main(void) {
 
     puts("Initializing EDHOC and EAD authz");
     credential_new(&cred_i, CRED_I[EDHOC_INITIATOR_INDEX], sizeof(CRED_I[EDHOC_INITIATOR_INDEX]) / sizeof(CRED_I[EDHOC_INITIATOR_INDEX][0]));
-    initiator_new(&initiator);
-    authz_device_new(&device, ID_U[EDHOC_INITIATOR_INDEX], ID_U_LEN, &G_W, LOC_W, LOC_W_LEN);
     _dotbot_vars.gateway_authenticated = false;
     int edhoc_state = 0;
     bool begin_edhoc = false;
     bool wait_edhoc_msg2 = false;
     printf("Dotbot initialized.\n");
     printf("Gateway NOT authenticated.\n");
+    db_gpio_init(&edhoc_pin, DB_GPIO_OUT);
+    db_gpio_init(&authz_pin, DB_GPIO_OUT);
+    db_timer_delay_ms(TIMER_DEV, 1100); // make sure it's greater than LOST_DELAY in PyDotBot
 
     while (1) {
         __WFE();
 
         if (edhoc_state == 0) {
             edhoc_state = 1;
-            printf("Beginning handhsake...");
+            puts("Beginning handhsake...");
             puts("computing authz_secret.");
+            db_gpio_set(&edhoc_pin);
+            initiator_new(&initiator);
+            db_gpio_set(&authz_pin);
+            authz_device_new(&device, ID_U[EDHOC_INITIATOR_INDEX], ID_U_LEN, &G_W, LOC_W, LOC_W_LEN);
             initiator_compute_ephemeral_secret(&initiator, &G_W, &authz_secret);
             authz_device_prepare_ead_1(&device, &authz_secret, SS, &ead_1);
+            db_gpio_clear(&authz_pin);
+
             initiator_prepare_message_1(&initiator, NULL, &ead_1, &message_1);
             memcpy(device.wait_ead2.h_message_1, initiator.wait_m2.h_message_1, SHA256_DIGEST_LEN);
+            db_gpio_clear(&edhoc_pin);
 
             //initiator_prepare_message_1(&initiator, NULL, NULL, &message_1);
 
@@ -300,6 +312,7 @@ int main(void) {
 
             memcpy(&message_2.content, &_dotbot_vars.edhoc_buffer.content, _dotbot_vars.edhoc_buffer.len);
             message_2.len = _dotbot_vars.edhoc_buffer.len;
+            db_gpio_set(&edhoc_pin);
             int8_t res = initiator_parse_message_2(
                 &initiator,
                 &message_2,
@@ -319,7 +332,9 @@ int main(void) {
             }
 
             puts("processing ead2");
+            db_gpio_set(&authz_pin);
             res = authz_device_process_ead_2(&device, &ead_2, &fetched_cred_r);
+            db_gpio_clear(&authz_pin);
             if (res != 0) {
                 printf("Error process ead2 (authz): %d\n", res);
                 edhoc_state = -1;
@@ -340,6 +355,7 @@ int main(void) {
                 edhoc_state = -1;
                 continue;
             }
+            db_gpio_clear(&edhoc_pin);
 
             db_protocol_header_to_buffer(_dotbot_vars.radio_buffer, DB_BROADCAST_ADDRESS, DotBot, DB_PROTOCOL_EDHOC_MSG);
             uint8_t *ptr = _dotbot_vars.radio_buffer + sizeof(protocol_header_t);
@@ -356,7 +372,12 @@ int main(void) {
                 printf("%X ", _dotbot_vars.prk_out[i]);
             }
             printf("\n");
+
+            // wait 3s and reboot
+            db_timer_delay_ms(TIMER_DEV, 3000);
+            NVIC_SystemReset();
         }
+
 
         if (!_dotbot_vars.gateway_authenticated) {
           continue;
