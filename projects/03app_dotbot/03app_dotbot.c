@@ -133,8 +133,24 @@ static EADItemC ead_1 = {0}, ead_2 = {0};
 static BytesP256ElemLen authz_secret = {0};
 
 // measuring authz
-static const gpio_t edhoc_pin = { .port = 0, .pin = 20 };
-static const gpio_t authz_pin = { .port = 0, .pin = 25 };
+static const gpio_t ot1 = { .port = 0, .pin = 20 };
+static const gpio_t ot2 = { .port = 0, .pin = 25 };
+
+#define AUTHZ_MEASURE 2 // 0 = off, 1 = cpu edhoc+authz, 2 = radio tx/rx time
+
+static inline void begin_measure_cpu(gpio_t *pin) {
+  if (AUTHZ_MEASURE == 1) db_gpio_set(pin);
+}
+static inline void begin_measure_radio(gpio_t *pin) {
+  if (AUTHZ_MEASURE == 2) db_gpio_set(pin);
+}
+
+static inline void end_measure_cpu(gpio_t *pin) {
+  if (AUTHZ_MEASURE == 1) db_gpio_clear(pin);
+}
+static inline void end_measure_radio(gpio_t *pin) {
+  if (AUTHZ_MEASURE == 2) db_gpio_clear(pin);
+}
 
 //=========================== prototypes =======================================
 
@@ -147,7 +163,16 @@ static void _update_lh2(void);
 //=========================== callbacks ========================================
 
 static void radio_callback(uint8_t *pkt, uint8_t len) {
-    (void)len;
+    //(void)len;
+    puts("CALLBACK called");
+    if (!_dotbot_vars.gateway_authenticated && len == 254) {
+        // BENCH: packet about to be received...
+        //puts("BEGIN packet");
+        begin_measure_radio(&ot1);
+        return;
+    }
+    //puts("END packet");
+    end_measure_radio(&ot1);
 
     _dotbot_vars.ts_last_packet_received = db_timer_ticks(TIMER_DEV);
     uint8_t           *ptk_ptr           = pkt;
@@ -231,6 +256,12 @@ static void radio_callback(uint8_t *pkt, uint8_t len) {
 
 int main(void) {
     db_board_init();
+
+    // benchmarking code
+    db_gpio_init(&ot1, DB_GPIO_OUT);
+    db_gpio_init(&ot2, DB_GPIO_OUT);
+    begin_measure_cpu(&ot2);
+
 #ifdef ENABLE_DOTBOT_LOG_DATA
     db_log_flash_init(LOG_DATA_DOTBOT);
 #endif
@@ -240,7 +271,7 @@ int main(void) {
 #endif
     db_motors_init();
     db_radio_init(&radio_callback, DB_RADIO_BLE_1MBit);
-    db_radio_set_frequency(8);  // Set the RX frequency to 2408 MHz.
+    db_radio_set_frequency(8);  // Set the RX frequency to //2408 MHz.
     db_radio_rx();              // Start receiving packets.
 
     // Set an invalid heading since the value is unknown on startup.
@@ -261,6 +292,7 @@ int main(void) {
     db_timer_set_periodic_ms(TIMER_DEV, 2, DB_LH2_UPDATE_DELAY_MS, &_update_lh2);
     db_lh2_init(&_dotbot_vars.lh2, &db_lh2_d, &db_lh2_e);
     db_lh2_start();
+    end_measure_cpu(&ot2);
 
     // Memory buffer for mbedtls
     //#ifdef RUST_PSA
@@ -268,51 +300,51 @@ int main(void) {
     mbedtls_memory_buffer_alloc_init(buffer, 4096 * 2);
     //#endif
 
-    puts("Initializing EDHOC and EAD authz");
+    //puts("Initializing EDHOC and EAD authz");
     credential_new(&cred_i, CRED_I[EDHOC_INITIATOR_INDEX], sizeof(CRED_I[EDHOC_INITIATOR_INDEX]) / sizeof(CRED_I[EDHOC_INITIATOR_INDEX][0]));
     _dotbot_vars.gateway_authenticated = false;
     int edhoc_state = 0;
     bool begin_edhoc = false;
     bool wait_edhoc_msg2 = false;
-    printf("Dotbot initialized.\n");
-    printf("Gateway NOT authenticated.\n");
-    db_gpio_init(&edhoc_pin, DB_GPIO_OUT);
-    db_gpio_init(&authz_pin, DB_GPIO_OUT);
-    db_timer_delay_ms(TIMER_DEV, 1100); // make sure it's greater than LOST_DELAY in PyDotBot
+    //printf("Dotbot initialized.\n");
+    //printf("Gateway NOT authenticated.\n");
+    //db_timer_delay_ms(TIMER_DEV, 1100); // make sure it's greater than LOST_DELAY in PyDotBot
 
     while (1) {
         __WFE();
 
         if (edhoc_state == 0) {
             edhoc_state = 1;
-            puts("Beginning handhsake...");
-            puts("computing authz_secret.");
-            db_gpio_set(&edhoc_pin);
+            //puts("Beginning handhsake...");
+            //puts("computing authz_secret.");
+            begin_measure_cpu(&ot1);
             initiator_new(&initiator);
-            db_gpio_set(&authz_pin);
+            begin_measure_cpu(&ot2);
             authz_device_new(&device, ID_U[EDHOC_INITIATOR_INDEX], ID_U_LEN, &G_W, LOC_W, LOC_W_LEN);
             initiator_compute_ephemeral_secret(&initiator, &G_W, &authz_secret);
             authz_device_prepare_ead_1(&device, &authz_secret, SS, &ead_1);
-            db_gpio_clear(&authz_pin);
+            end_measure_cpu(&ot2);
 
             initiator_prepare_message_1(&initiator, NULL, &ead_1, &message_1);
             memcpy(device.wait_ead2.h_message_1, initiator.wait_m2.h_message_1, SHA256_DIGEST_LEN);
-            db_gpio_clear(&edhoc_pin);
+            end_measure_cpu(&ot1);
 
             //initiator_prepare_message_1(&initiator, NULL, NULL, &message_1);
 
+            begin_measure_radio(&ot2);
             db_protocol_header_to_buffer(_dotbot_vars.radio_buffer, DB_BROADCAST_ADDRESS, DotBot, DB_PROTOCOL_EDHOC_MSG);
             memcpy(_dotbot_vars.radio_buffer + sizeof(protocol_header_t), message_1.content, message_1.len);
             size_t length = sizeof(protocol_header_t) + message_1.len;
             db_radio_disable();
             db_radio_tx(_dotbot_vars.radio_buffer, length);
-            puts("sent msg1.");
+            end_measure_radio(&ot2);
+            //puts("sent msg1.");
         } else if (_dotbot_vars.update_edhoc && edhoc_state == 1) {
             _dotbot_vars.update_edhoc = false;
 
             memcpy(&message_2.content, &_dotbot_vars.edhoc_buffer.content, _dotbot_vars.edhoc_buffer.len);
             message_2.len = _dotbot_vars.edhoc_buffer.len;
-            db_gpio_set(&edhoc_pin);
+            begin_measure_cpu(&ot1);
             int8_t res = initiator_parse_message_2(
                 &initiator,
                 &message_2,
@@ -331,10 +363,10 @@ int main(void) {
                 return 1;
             }
 
-            puts("processing ead2");
-            db_gpio_set(&authz_pin);
+            //puts("processing ead2");
+            begin_measure_cpu(&ot2);
             res = authz_device_process_ead_2(&device, &ead_2, &fetched_cred_r);
-            db_gpio_clear(&authz_pin);
+            end_measure_cpu(&ot2);
             if (res != 0) {
                 printf("Error process ead2 (authz): %d\n", res);
                 edhoc_state = -1;
@@ -348,15 +380,16 @@ int main(void) {
                 continue;
             }
 
-            puts("preparing msg3");
+            //puts("preparing msg3");
             res = initiator_prepare_message_3(&initiator, ByReference, NULL, &message_3, _dotbot_vars.prk_out);
             if (res != 0) {
                 printf("Error prep msg3: %d\n", res);
                 edhoc_state = -1;
                 continue;
             }
-            db_gpio_clear(&edhoc_pin);
+            end_measure_cpu(&ot1);
 
+            begin_measure_radio(&ot2);
             db_protocol_header_to_buffer(_dotbot_vars.radio_buffer, DB_BROADCAST_ADDRESS, DotBot, DB_PROTOCOL_EDHOC_MSG);
             uint8_t *ptr = _dotbot_vars.radio_buffer + sizeof(protocol_header_t);
             *ptr = c_r;
@@ -365,13 +398,15 @@ int main(void) {
             db_radio_disable();
             db_radio_tx(_dotbot_vars.radio_buffer, length);
             _dotbot_vars.gateway_authenticated = true;
+            edhoc_state = 2;;
+            end_measure_radio(&ot2);
 
             printf("\nDotBot <-> Gateway authenticated.\n");
-            printf("Derived key:   ");
-            for (size_t i = 0; i < SHA256_DIGEST_LEN; i++) {
-                printf("%X ", _dotbot_vars.prk_out[i]);
-            }
-            printf("\n");
+            //printf("Derived key:   ");
+            //for (size_t i = 0; i < SHA256_DIGEST_LEN; i++) {
+            //    printf("%X ", _dotbot_vars.prk_out[i]);
+            //}
+            //printf("\n");
 
             // wait 3s and reboot
             db_timer_delay_ms(TIMER_DEV, 3000);
