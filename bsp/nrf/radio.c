@@ -254,7 +254,8 @@ void RADIO_IRQHandler(void) {
     if (NRF_RADIO->EVENTS_ADDRESS) {
         NRF_RADIO->EVENTS_ADDRESS = 0;
         radio_vars.state |= RADIO_STATE_BUSY;
-	radio_vars.callback(NULL, 254);
+	// dirty trick to signal radio rx start, for evaluation purposes; must be commented out in the gateway side
+	//radio_vars.callback(NULL, 254);
     }
 
     if (NRF_RADIO->EVENTS_DISABLED) {
