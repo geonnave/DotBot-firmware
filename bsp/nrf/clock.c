@@ -56,7 +56,9 @@ void db_hfclk_init(void) {
 #endif
     NRF_CLOCK->HFCLKSRC = CLOCK_HFCLKSRC_SRC_HFXO << CLOCK_HFCLKSRC_SRC_Pos;
     // Enable 128MHZ core clock, only possible with application core
-    NRF_CLOCK->HFCLKCTRL = CLOCK_HFCLKCTRL_HCLK_Div1 << CLOCK_HFCLKCTRL_HCLK_Pos;
+    //NRF_CLOCK->HFCLKCTRL = CLOCK_HFCLKCTRL_HCLK_Div1 << CLOCK_HFCLKCTRL_HCLK_Pos;
+    // ELA evaluation: actually use 64MHZ
+    NRF_CLOCK->HFCLKCTRL = CLOCK_HFCLKCTRL_HCLK_Div2 << CLOCK_HFCLKCTRL_HCLK_Pos;
 #endif
 
     NRF_CLOCK->TASKS_HFCLKSTART = 1;

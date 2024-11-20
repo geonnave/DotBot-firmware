@@ -243,7 +243,7 @@ static void radio_callback(uint8_t *pkt, uint8_t len) {
 //=========================== main =============================================
 
 int main(void) {
-    db_board_init();
+    //db_board_init(); // ELA evaluation: avoid turning on the DotBot board regulator
 
     // benchmarking code
     db_gpio_init(&p006, DB_GPIO_OUT);
@@ -261,7 +261,7 @@ int main(void) {
 #ifdef DB_RGB_LED_PWM_RED_PORT
     db_rgbled_pwm_init(&rgbled_pwm_conf);
 #endif
-    db_motors_init();
+    //db_motors_init(); // ELA evaluation: avoid using motors
     db_radio_init(&radio_callback, DB_RADIO_BLE_1MBit);
     db_radio_set_frequency(8);  // Set the RX frequency to 2408 MHz.
     db_radio_rx();              // Start receiving packets.
@@ -281,13 +281,14 @@ int main(void) {
     db_timer_init(TIMER_DEV);
     db_timer_set_periodic_ms(TIMER_DEV, 0, DB_TIMEOUT_CHECK_DELAY_MS, &_timeout_check);
     db_timer_set_periodic_ms(TIMER_DEV, 1, DB_ADVERTIZEMENT_DELAY_MS, &_advertise);
-    db_timer_set_periodic_ms(TIMER_DEV, 2, DB_LH2_UPDATE_DELAY_MS, &_update_lh2);
-    db_lh2_init(&_dotbot_vars.lh2, &db_lh2_d, &db_lh2_e);
-    db_lh2_start();
+    // ELA evaluation: no need for lighthouse
+    //db_timer_set_periodic_ms(TIMER_DEV, 2, DB_LH2_UPDATE_DELAY_MS, &_update_lh2);
+    //db_lh2_init(&_dotbot_vars.lh2, &db_lh2_d, &db_lh2_e);
+    //db_lh2_start();
 
     // Memory buffer for mbedtls
     //#ifdef RUST_PSA
-    char buffer[4096 * 2] = {0};
+    uint8_t buffer[4096 * 2] = {0};
     mbedtls_memory_buffer_alloc_init(buffer, 4096 * 2);
     //#endif
 
@@ -384,7 +385,7 @@ int main(void) {
 
             //puts("preparing msg3");
             db_gpio_set(&p007);
-            res = initiator_prepare_message_3(&initiator, ByReference, NULL, &message_3, _dotbot_vars.prk_out);
+            res = initiator_prepare_message_3(&initiator, ByReference, NULL, &message_3, &_dotbot_vars.prk_out);
             if (res != 0) {
                 printf("Error prep msg3: %d\n", res);
                 edhoc_state = -1;
